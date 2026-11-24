@@ -403,10 +403,19 @@ async function runSearch(q) {
   const val = r => (r.status === 'fulfilled' ? r.value : []);
   const seen = new Set();
   const uniq = arr => arr.filter(d => !seen.has(d.id) && seen.add(d.id));
-  const main = uniq([...val(slick), ...val(web)]);
-  const similar = uniq([...val(simSlick), ...val(simWeb)]);
+  // Relevance: share of the search words that appear in the title. Live deals that
+  // only mention the item in passing (a charger "for AirPods") are dropped.
+  const relevance = (d, query) => {
+    const qt = tokens(query).filter(t => !SIM_STOP.has(t));
+    if (!qt.length) return 1;
+    const tt = new Set(tokens(d.title));
+    return qt.filter(t => tt.has(t) || tt.has(t.replace(/s$/, '')) || tt.has(t + 's')).length / qt.length;
+  };
+  const tag = (arr, query) => arr.map(d => ({ ...d, rel: relevance(d, query) })).filter(d => d.kind !== 'deal' || d.rel > 0);
+  const main = uniq([...tag(val(slick), q), ...tag(val(web), q)]);
+  const similar = uniq([...tag(val(simSlick), simQ || ''), ...tag(val(simWeb), simQ || '')]);
 
-  const byScore = (a, b) => b.score - a.score;
+  const byScore = (a, b) => (b.rel - a.rel) || (b.score - a.score);
   const withCodes = main.filter(d => d.codes.length).sort(byScore);
   const deals = main.filter(d => !d.codes.length && d.kind === 'deal').sort(byScore);
   const pages = main.filter(d => !d.codes.length && d.kind !== 'deal');
