@@ -1,6 +1,6 @@
 import {
   CATEGORIES, CAT_BY_ID, classify, makeDeal, parseRssItems, parseDiscount, discountScore,
-  discountLabel, hostOf, tokens,
+  discountLabel, hostOf, tokens, RETAILERS, RETAILER_BY_ID, detectRetailer, isRefurb, isEbay,
 } from './deal-utils.js';
 
 /* =========================================================
@@ -15,6 +15,7 @@ const DEFAULTS = {
   theme: 'arcade', hue: null, font: 100, radius: 18, density: 'cozy', layout: 'list',
   motion: true, blobs: true, confetti: true, haptics: true, snippets: true,
   provider: 'ddg', serperKey: '', jinaKey: '', slick: true, similar: true,
+  hideEbay: true, hideRefurb: true,
 };
 let settings = { ...DEFAULTS, ...store.get('settings', {}) };
 let stash = store.get('stash', []);
@@ -24,6 +25,10 @@ const known = new Map();           // every deal currently on screen, by id
 let stashFilter = 'all';
 let hideUsed = false;
 let hotFilter = 'all';
+let hotStore = 'all';
+let stashStore = 'all';
+let searchStore = 'all';
+let lastSearch = null;
 
 const saveSettings = () => store.set('settings', settings);
 const saveStash = () => { store.set('stash', stash); updateStashCount(); };
@@ -32,6 +37,36 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const enc = encodeURIComponent;
+
+/* =========================================================
+   Stores & filters
+   ========================================================= */
+/** Older saved/cached deals predate store detection: fill it in on the fly. */
+function storeOf(d) {
+  if (d.retailer === undefined) d.retailer = detectRetailer(d);
+  return d.retailer || 'other';
+}
+const storeName = id => RETAILER_BY_ID[id]?.name || 'Other stores';
+const storeColor = id => RETAILER_BY_ID[id]?.color || 'var(--muted)';
+/** eBay / refurbished filters from Style → Filters. */
+const allowed = d => !(settings.hideEbay && isEbay(d)) && !(settings.hideRefurb && isRefurb(d));
+const inStore = (d, store) => store === 'all' || storeOf(d) === store;
+const byStoreName = (a, b) => {
+  const sa = storeOf(a), sb = storeOf(b);
+  if (sa === sb) return 0;
+  if (sa === 'other') return 1;
+  if (sb === 'other') return -1;
+  return storeName(sa).localeCompare(storeName(sb));
+};
+
+function storeChips(deals, active, attr) {
+  const counts = {};
+  deals.forEach(d => { const s = storeOf(d); counts[s] = (counts[s] || 0) + 1; });
+  const ids = Object.keys(counts).sort((a, b) => (a === 'other') - (b === 'other') || counts[b] - counts[a] || storeName(a).localeCompare(storeName(b)));
+  if (ids.length < 2 && active === 'all') return '';
+  return `<button class="chip ${active === 'all' ? 'on' : ''}" ${attr}="all">🏬 All stores<span class="n">${deals.length}</span></button>` +
+    ids.map(id => `<button class="chip ${active === id ? 'on' : ''}" ${attr}="${id}"><i class="dot" style="background:${storeColor(id)}"></i>${esc(storeName(id))}<span class="n">${counts[id]}</span></button>`).join('');
+}
 
 /* =========================================================
    Themes & settings UI
@@ -103,8 +138,9 @@ function initSettingsUI() {
   syncers.push(
     bindCheck('#s-motion', 'motion'), bindCheck('#s-blobs', 'blobs'), bindCheck('#s-confetti', 'confetti'),
     bindCheck('#s-haptics', 'haptics'), bindCheck('#s-snippets', 'snippets'), bindCheck('#s-slick', 'slick'),
-    bindCheck('#s-similar', 'similar'),
+    bindCheck('#s-similar', 'similar'), bindCheck('#s-noebay', 'hideEbay'), bindCheck('#s-norefurb', 'hideRefurb'),
   );
+  ['#s-noebay', '#s-norefurb'].forEach(id => $(id).addEventListener('change', () => { renderSearch(); renderHot(); }));
   const bindText = (id, key) => {
     const el = $(id);
     el.addEventListener('change', () => { settings[key] = el.value.trim(); saveSettings(); toast('Saved ✓'); });
@@ -332,11 +368,18 @@ function metaHtml(d) {
   const host = hostOf(d.url);
   return `<div class="meta">
     <span class="src">${favicon(host)}${esc(d.source || host)}</span>
+    ${storeTag(d)}
     <span class="tag">${cat.emoji} ${esc(cat.name)}</span>
     ${d.discount?.freeShip ? '<span class="tag">🚚 Free ship</span>' : ''}
     ${d.codes?.length ? '<span class="tag hot">🎟️ Code</span>' : ''}
     ${d.date ? `<span>${esc(timeAgo(d.date))}</span>` : ''}
   </div>`;
+}
+
+function storeTag(d) {
+  const id = storeOf(d);
+  if (id === 'other') return '';
+  return `<span class="tag store"><i class="dot" style="background:${storeColor(id)}"></i>${esc(storeName(id))}</span>`;
 }
 
 function dealCard(d, i = 0) {
@@ -389,6 +432,7 @@ async function runSearch(q) {
   status.className = 'status';
   status.innerHTML = `<span class="sniffer"><span class="paw">🐾</span> Sniffing around for “${esc(q)}” deals…</span>`;
   out.innerHTML = `<div class="cards">${'<div class="skeleton"></div>'.repeat(4)}</div>`;
+  $('#search-tools').hidden = true;
 
   const simQ = settings.similar ? similarQuery(q) : null;
   const jobs = [
@@ -414,32 +458,62 @@ async function runSearch(q) {
   const tag = (arr, query) => arr.map(d => ({ ...d, rel: relevance(d, query) })).filter(d => d.kind !== 'deal' || d.rel > 0);
   const main = uniq([...tag(val(slick), q), ...tag(val(web), q)]);
   const similar = uniq([...tag(val(simSlick), simQ || ''), ...tag(val(simWeb), simQ || '')]);
-
-  const byScore = (a, b) => (b.rel - a.rel) || (b.score - a.score);
-  const withCodes = main.filter(d => d.codes.length).sort(byScore);
-  const deals = main.filter(d => !d.codes.length && d.kind === 'deal').sort(byScore);
-  const pages = main.filter(d => !d.codes.length && d.kind !== 'deal');
-  const simSorted = [...similar.filter(d => d.codes.length).sort(byScore), ...similar.filter(d => !d.codes.length).sort(byScore)].slice(0, 8);
   const local = localMatches(q, seen);
 
-  const failed = [web, slick].filter(r => r.status === 'rejected');
-  const limited = [web, slick, simWeb, simSlick].some(r => r.status === 'rejected' && /rate/.test(r.reason?.message));
+  lastSearch = {
+    q, simQ, main, similar, local,
+    failed: [web, slick].some(r => r.status === 'rejected'),
+    limited: [web, slick, simWeb, simSlick].some(r => r.status === 'rejected' && /rate/.test(r.reason?.message)),
+    celebrated: false,
+  };
+  searchStore = 'all';
+  renderSearch();
+}
+
+function renderSearch() {
+  const status = $('#search-status'), out = $('#search-results'), tools = $('#search-tools');
+  if (!lastSearch) { tools.hidden = true; return; }
+  const { q, simQ, failed, limited } = lastSearch;
+  const all = [...lastSearch.main, ...lastSearch.similar, ...lastSearch.local];
+  const visible = all.filter(allowed);
+  const hidden = all.length - visible.length;
+  if (searchStore !== 'all' && !visible.some(d => storeOf(d) === searchStore)) searchStore = 'all';
+  const pick = arr => arr.filter(d => allowed(d) && inStore(d, searchStore));
+  const main = pick(lastSearch.main), similar = pick(lastSearch.similar), local = pick(lastSearch.local);
+
+  const sort = $('#search-sort').value;
+  const cmp = sort === 'score' ? (a, b) => b.score - a.score
+    : sort === 'store' ? (a, b) => byStoreName(a, b) || ((b.rel || 0) - (a.rel || 0)) || (b.score - a.score)
+      : (a, b) => ((b.rel || 0) - (a.rel || 0)) || (b.score - a.score);
+  const withCodes = main.filter(d => d.codes.length).sort(cmp);
+  const deals = main.filter(d => !d.codes.length && d.kind === 'deal').sort(cmp);
+  const pages = main.filter(d => !d.codes.length && d.kind !== 'deal');
+  if (sort !== 'match') pages.sort(cmp);
+  const simSorted = [...similar.filter(d => d.codes.length).sort(cmp), ...similar.filter(d => !d.codes.length).sort(cmp)].slice(0, 8);
+
+  $('#search-stores').innerHTML = storeChips(visible, searchStore, 'data-search-store');
+  tools.hidden = !visible.length;
+  const hiddenNote = hidden ? ` <span class="muted-note">(hid ${hidden} ${[settings.hideEbay && 'eBay', settings.hideRefurb && 'refurbished'].filter(Boolean).join('/')} listing${hidden > 1 ? 's' : ''})</span>` : '';
 
   if (!main.length && !similar.length && !local.length) {
     status.className = 'status err';
-    status.textContent = failed.length
-      ? (limited ? 'The free search sources need a breather 😮‍💨 Try again in a minute, or add a free key under Style → Search power.'
-        : 'Couldn’t reach the search sources. Check your connection and try again.')
-      : 'Nothing turned up. Try a simpler name (like the brand) or a store.';
+    if (searchStore !== 'all') status.innerHTML = `Nothing from ${esc(storeName(searchStore))} for “${esc(q)}”.` + hiddenNote;
+    else if (failed && !all.length) {
+      status.textContent = limited
+        ? 'The free search sources need a breather 😮‍💨 Try again in a minute, or add a free key under Style → Search power.'
+        : 'Couldn’t reach the search sources. Check your connection and try again.';
+    } else status.innerHTML = 'Nothing turned up. Try a simpler name (like the brand) or a store.' + hiddenNote;
     out.innerHTML = quickLinks(q);
     return;
   }
 
   const n = withCodes.length;
-  status.textContent = n
-    ? `🎉 Found ${n} possible code${n > 1 ? 's' : ''} and ${main.length - n} more deals for “${q}”.`
-    : `No codes posted for “${q}” right now, but here are ${main.length} deals and coupon pages${similar.length ? ' plus similar items' : ''}.`;
-  if (n) setTimeout(() => burst($('#search-status').getBoundingClientRect(), 50), 150);
+  const where = searchStore === 'all' ? '' : ` at ${esc(storeName(searchStore))}`;
+  status.className = 'status';
+  status.innerHTML = (n
+    ? `🎉 Found ${n} possible code${n > 1 ? 's' : ''} and ${main.length - n} more deals for “${esc(q)}”${where}.`
+    : `No codes posted for “${esc(q)}”${where} right now, but here are ${main.length} deals and coupon pages${similar.length ? ' plus similar items' : ''}.`) + hiddenNote;
+  if (n && !lastSearch.celebrated) { lastSearch.celebrated = true; setTimeout(() => burst($('#search-status').getBoundingClientRect(), 50), 150); }
 
   out.innerHTML =
     section('🎟️ Codes found', withCodes, 'Codes come from public posts. Tap one to copy it, then check it at checkout.') +
@@ -510,18 +584,33 @@ async function loadHot(force = false) {
 }
 
 function renderHot() {
-  const deals = hot.deals || [];
-  $('#hot-sub').textContent = hot.updated ? `${deals.length} deals · updated ${timeAgo(hot.updated)}` : 'Loading fresh deals…';
+  const all = hot.deals || [];
+  const deals = all.filter(allowed);
+  const hiddenN = all.length - deals.length;
+  $('#hot-sub').textContent = hot.updated ? `${deals.length} deals · updated ${timeAgo(hot.updated)}${hiddenN ? ` · ${hiddenN} hidden by filters` : ''}` : 'Loading fresh deals…';
   const counts = {};
   deals.forEach(d => { counts[d.category] = (counts[d.category] || 0) + 1; });
   $('#hot-cats').innerHTML = `<button class="chip ${hotFilter === 'all' ? 'on' : ''}" data-hot-cat="all">✨ All<span class="n">${deals.length}</span></button>` +
     CATEGORIES.filter(c => counts[c.id]).map(c => `<button class="chip ${hotFilter === c.id ? 'on' : ''}" data-hot-cat="${c.id}">${c.emoji} ${c.name}<span class="n">${counts[c.id]}</span></button>`).join('');
+  const inCat = deals.filter(d => hotFilter === 'all' || d.category === hotFilter);
+  if (hotStore !== 'all' && !inCat.some(d => storeOf(d) === hotStore)) hotStore = 'all';
+  $('#hot-stores').innerHTML = storeChips(inCat, hotStore, 'data-hot-store');
   const sort = $('#hot-sort').value;
-  let list = deals.filter(d => hotFilter === 'all' || d.category === hotFilter);
+  let list = inCat.filter(d => inStore(d, hotStore));
   if (sort === 'score') list = [...list].sort((a, b) => b.score - a.score);
   if (sort === 'new') list = [...list].sort((a, b) => Date.parse(b.date || 0) - Date.parse(a.date || 0));
   if (sort === 'code') list = [...list].sort((a, b) => (b.codes.length > 0) - (a.codes.length > 0) || b.score - a.score);
-  $('#hot-list').innerHTML = list.length ? list.map(dealCard).join('')
+  if (sort === 'store') list = [...list].sort((a, b) => byStoreName(a, b) || b.score - a.score);
+  let lastStore = null, i = 0;
+  const cardsHtml = list.map(d => {
+    let head = '';
+    if (sort === 'store' && storeOf(d) !== lastStore) {
+      lastStore = storeOf(d);
+      head = `<h3 class="store-head"><i class="dot" style="background:${storeColor(lastStore)}"></i>${esc(storeName(lastStore))}</h3>`;
+    }
+    return head + dealCard(d, i++);
+  }).join('');
+  $('#hot-list').innerHTML = list.length ? cardsHtml
     : (hotLoading || !hot.updated ? '<div class="skeleton"></div>'.repeat(4) : '<div class="empty"><span class="big">🙀</span>No deals in this category right now.</div>');
 }
 
@@ -553,6 +642,9 @@ function renderStash() {
   $('#stash-cats').innerHTML = `<button class="chip ${stashFilter === 'all' ? 'on' : ''}" data-stash-cat="all">✨ All<span class="n">${stash.length}</span></button>` +
     CATEGORIES.filter(c => counts[c.id]).map(c => `<button class="chip ${stashFilter === c.id ? 'on' : ''}" data-stash-cat="${c.id}">${c.emoji} ${c.name}<span class="n">${counts[c.id]}</span></button>`).join('');
   $('#toggle-used').textContent = hideUsed ? 'Show used' : 'Hide used';
+  const catScope = stash.filter(d => stashFilter === 'all' || d.category === stashFilter);
+  if (stashStore !== 'all' && !catScope.some(d => storeOf(d) === stashStore)) stashStore = 'all';
+  $('#stash-stores').innerHTML = storeChips(catScope, stashStore, 'data-stash-store');
 
   if (!stash.length) {
     $('#stash-list').innerHTML = `<div class="empty"><span class="big">🐱</span>
@@ -561,13 +653,15 @@ function renderStash() {
   }
   const cats = CATEGORIES.filter(c => counts[c.id] && (stashFilter === 'all' || stashFilter === c.id));
   $('#stash-list').innerHTML = cats.map(c => {
-    const items = stash.filter(d => d.category === c.id && !(hideUsed && d.used));
+    const items = stash.filter(d => d.category === c.id && !(hideUsed && d.used) && inStore(d, stashStore));
     if (!items.length) return '';
     return `<div class="stash-group">
       <h3>${c.emoji} ${c.name} <span class="count">${items.length}</span></h3>
       <ol class="rank-list" data-cat="${c.id}">${items.map((d, i) => rankItem(d, i)).join('')}</ol>
     </div>`;
-  }).join('') || '<div class="empty"><span class="big">✅</span>Everything here is marked used.</div>';
+  }).join('') || (stashStore !== 'all'
+    ? `<div class="empty"><span class="big">🏬</span>Nothing from ${esc(storeName(stashStore))} here.</div>`
+    : '<div class="empty"><span class="big">✅</span>Everything here is marked used.</div>');
 }
 
 function rankItem(d, i) {
@@ -585,6 +679,7 @@ function rankItem(d, i) {
       <h4>${esc(d.title)}</h4>
       <div class="meta">
         <span class="src">${favicon(hostOf(d.url))}${esc(d.source || hostOf(d.url) || 'added by you')}</span>
+        ${storeTag(d)}
         <select class="cat-select" data-recat="${d.id}" aria-label="Category">
           ${CATEGORIES.map(c => `<option value="${c.id}" ${c.id === d.category ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('')}
         </select>
@@ -604,11 +699,12 @@ function rankItem(d, i) {
 
 /** Re-order the stash so one category's items follow the order of `ids`. */
 function applyCategoryOrder(cat, ids) {
+  // Only the listed items swap places among themselves; anything filtered out of view
+  // (other stores, used items) keeps its spot in the ranking.
   const byId = new Map(stash.map(d => [d.id, d]));
-  const visible = ids.map(id => byId.get(id)).filter(Boolean);
-  const hidden = stash.filter(d => d.category === cat && !ids.includes(d.id));
-  const queue = [...visible, ...hidden];
-  stash = stash.map(d => (d.category === cat ? queue.shift() : d));
+  const set = new Set(ids);
+  const queue = ids.map(id => byId.get(id)).filter(Boolean);
+  stash = stash.map(d => (d.category === cat && set.has(d.id) ? queue.shift() : d));
   saveStash();
 }
 
@@ -665,7 +761,7 @@ function startDrag(e, handle) {
 function autoRank() {
   const cats = stashFilter === 'all' ? [...new Set(stash.map(d => d.category))] : [stashFilter];
   for (const cat of cats) {
-    const sorted = stash.filter(d => d.category === cat)
+    const sorted = stash.filter(d => d.category === cat && inStore(d, stashStore))
       .sort((a, b) => (a.used - b.used) || (b.score - a.score) || ((b.codes?.length || 0) - (a.codes?.length || 0)));
     applyCategoryOrder(cat, sorted.map(d => d.id));
   }
@@ -745,6 +841,9 @@ document.addEventListener('click', e => {
   if ('clearRecent' in ds) { recent = []; store.set('recent', recent); return renderRecent(); }
   if (ds.hotCat) { hotFilter = ds.hotCat; buzz(6); return renderHot(); }
   if (ds.stashCat) { stashFilter = ds.stashCat; buzz(6); return renderStash(); }
+  if (ds.stashStore) { stashStore = ds.stashStore; buzz(6); return renderStash(); }
+  if (ds.hotStore) { hotStore = ds.hotStore; buzz(6); return renderHot(); }
+  if (ds.searchStore) { searchStore = ds.searchStore; buzz(6); return renderSearch(); }
   if (ds.used) { const d = stash.find(s => s.id === ds.used); if (d) { d.used = !d.used; saveStash(); renderStash(); if (d.used) toast('Nice savings! 🎉'); } return; }
   if (ds.edit) return openEditor(ds.edit);
   if (ds.remove) { stash = stash.filter(s => s.id !== ds.remove); saveStash(); renderStash(); return toast('Removed'); }
@@ -776,6 +875,7 @@ document.addEventListener('change', e => {
 $('#search-form').addEventListener('submit', e => { e.preventDefault(); $('#q').blur(); runSearch($('#q').value); });
 $('#hot-refresh').addEventListener('click', () => loadHot(true));
 $('#hot-sort').addEventListener('change', renderHot);
+$('#search-sort').addEventListener('change', renderSearch);
 $('#auto-rank').addEventListener('click', autoRank);
 $('#toggle-used').addEventListener('click', () => { hideUsed = !hideUsed; renderStash(); });
 $('#add-item').addEventListener('click', () => openEditor());

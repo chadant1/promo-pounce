@@ -127,9 +127,87 @@ export function hashId(s = '') {
   return 'd' + (h >>> 0).toString(36);
 }
 
+
+/* ---------- Retailers ----------
+   `re` matches the store's name in text; brand-name stores (Apple, Nike, Dell…) are only
+   detected by their domain so a product's brand isn't mistaken for where it's sold. */
+export const RETAILERS = [
+  { id: 'amazon', name: 'Amazon', color: '#ff9900', domains: ['amazon.com', 'amzn.to', 'woot.com'], re: /\bamazon\b|\bprime members\b/i },
+  { id: 'walmart', name: 'Walmart', color: '#0071ce', domains: ['walmart.com'], re: /\bwalmart\b/i },
+  { id: 'target', name: 'Target', color: '#cc0000', domains: ['target.com'], re: /\bTarget\b/ },
+  { id: 'bestbuy', name: 'Best Buy', color: '#0046be', domains: ['bestbuy.com'], re: /\bbest\s?buy\b/i },
+  { id: 'costco', name: 'Costco', color: '#e31837', domains: ['costco.com'], re: /\bcostco\b/i },
+  { id: 'samsclub', name: "Sam's Club", color: '#0067a0', domains: ['samsclub.com'], re: /\bsam'?s club\b/i },
+  { id: 'homedepot', name: 'Home Depot', color: '#f96302', domains: ['homedepot.com'], re: /\bhome depot\b/i },
+  { id: 'lowes', name: "Lowe's", color: '#004990', domains: ['lowes.com'], re: /\blowe'?s\b/i },
+  { id: 'macys', name: "Macy's", color: '#e21a2c', domains: ['macys.com'], re: /\bmacy'?s\b/i },
+  { id: 'kohls', name: "Kohl's", color: '#859b3c', domains: ['kohls.com'], re: /\bkohl'?s\b/i },
+  { id: 'nordstrom', name: 'Nordstrom', color: '#6b6b6b', domains: ['nordstrom.com', 'nordstromrack.com'], re: /\bnordstrom\b/i },
+  { id: 'newegg', name: 'Newegg', color: '#f7a21b', domains: ['newegg.com'], re: /\bnewegg\b/i },
+  { id: 'gamestop', name: 'GameStop', color: '#e10000', domains: ['gamestop.com'], re: /\bgamestop\b/i },
+  { id: 'wayfair', name: 'Wayfair', color: '#7b189f', domains: ['wayfair.com'], re: /\bwayfair\b/i },
+  { id: 'staples', name: 'Staples', color: '#cc0000', domains: ['staples.com'], re: /\bstaples\b/i },
+  { id: 'officedepot', name: 'Office Depot', color: '#d12026', domains: ['officedepot.com'], re: /\boffice ?depot\b/i },
+  { id: 'dicks', name: "Dick's", color: '#006b54', domains: ['dickssportinggoods.com'], re: /\bdick'?s sporting\b/i },
+  { id: 'rei', name: 'REI', color: '#3f6e47', domains: ['rei.com'], re: /\bREI\b/ },
+  { id: 'sephora', name: 'Sephora', color: '#111111', domains: ['sephora.com'], re: /\bsephora\b/i },
+  { id: 'ulta', name: 'Ulta', color: '#f26b3a', domains: ['ulta.com'], re: /\bulta\b/i },
+  { id: 'cvs', name: 'CVS', color: '#cc0000', domains: ['cvs.com'], re: /\bCVS\b/ },
+  { id: 'walgreens', name: 'Walgreens', color: '#e31837', domains: ['walgreens.com'], re: /\bwalgreens\b/i },
+  { id: 'chewy', name: 'Chewy', color: '#1c49c2', domains: ['chewy.com'], re: /\bchewy\b/i },
+  { id: 'petsmart', name: 'PetSmart', color: '#d1131f', domains: ['petsmart.com'], re: /\bpetsmart\b/i },
+  { id: 'apple', name: 'Apple', color: '#555555', domains: ['apple.com'], re: /\bapple\.com\b|\bapple store\b/i },
+  { id: 'nike', name: 'Nike', color: '#111111', domains: ['nike.com'], re: null },
+  { id: 'adidas', name: 'adidas', color: '#111111', domains: ['adidas.com'], re: null },
+  { id: 'dell', name: 'Dell', color: '#007db8', domains: ['dell.com'], re: null },
+  { id: 'lenovo', name: 'Lenovo', color: '#e2231a', domains: ['lenovo.com'], re: null },
+  { id: 'samsung', name: 'Samsung', color: '#1428a0', domains: ['samsung.com'], re: null },
+  { id: 'hp', name: 'HP', color: '#0096d6', domains: ['hp.com'], re: null },
+  { id: 'microsoft', name: 'Microsoft', color: '#00a4ef', domains: ['microsoft.com'], re: null },
+  { id: 'ebay', name: 'eBay', color: '#e53238', domains: ['ebay.com'], re: /\bebay\b/i },
+];
+export const RETAILER_BY_ID = Object.fromEntries(RETAILERS.map(r => [r.id, r]));
+const DOMAIN_TO_RETAILER = new Map(RETAILERS.flatMap(r => r.domains.map(d => [d, r.id])));
+
+function retailerFromHost(host = '') {
+  host = host.toLowerCase().replace(/^www\./, '');
+  for (const [d, id] of DOMAIN_TO_RETAILER) if (host === d || host.endsWith('.' + d)) return id;
+  return null;
+}
+
+/** Work out which store a deal is from. Returns a retailer id or null. */
+export function detectRetailer({ title = '', snippet = '', url = '', source = '' } = {}) {
+  const fromUrl = retailerFromHost(hostOf(url));
+  if (fromUrl) return fromUrl;
+  // Domains written in the text, e.g. Slickdeals' "[walmart.com]" or "amazon.com · Slickdeals"
+  for (const m of `${source} ${title} ${snippet}`.matchAll(/\b((?:[a-z0-9-]+\.)+(?:com|to))\b/gi)) {
+    const id = retailerFromHost(m[1]);
+    if (id) return id;
+  }
+  // "… at Walmart", "via Amazon", "@ Target" in the title wins over a brand mentioned first
+  for (const r of RETAILERS) {
+    if (r.re && new RegExp('(?:\\bat|\\bvia|\\bfrom|@|\\|)\\s+(?:' + r.re.source + ')', r.re.flags).test(title)) return r.id;
+  }
+  const earliest = text => {
+    let best = null, pos = Infinity;
+    for (const r of RETAILERS) {
+      if (!r.re) continue;
+      const m = text.match(r.re);
+      if (m && m.index < pos) { pos = m.index; best = r.id; }
+    }
+    return best;
+  };
+  return earliest(title) || earliest(snippet);
+}
+
+const REFURB_RE = /\b(?:refurb(?:ished)?|renewed|reconditioned|re-?certified|remanufactured|open[- ]box|pre-?owned|second[- ]hand|like[- ]new|used\s*-\s*(?:good|very good|acceptable|like new)|grade [abc] (?:condition|used))\b/i;
+export const isRefurb = d => REFURB_RE.test(`${d.title || ''} ${d.snippet || ''}`);
+export const isEbay = d => d.retailer === 'ebay' || /\bebay\b/i.test(d.title || '') || retailerFromHost(hostOf(d.url || '')) === 'ebay';
+
 /** Turn any raw result into the app's deal shape. */
 export function makeDeal({ title, url, snippet = '', source = '', date = null, kind = 'web' }) {
   title = stripTags(title).replace(/\*\*/g, '');
+  const retailer = detectRetailer({ title, snippet: stripTags(snippet), url, source });
   snippet = stripTags(snippet).replace(/\*\*/g, '').replace(/\[[^\]]*\.(?:com|net|org)\]/g, '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
   const text = title + ' ' + snippet;
   const discount = parseDiscount(text);
@@ -143,6 +221,7 @@ export function makeDeal({ title, url, snippet = '', source = '', date = null, k
     discount,
     score: discountScore(discount),
     category: classify(title, snippet),
+    retailer,
     date,
     kind,
   };
