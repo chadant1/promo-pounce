@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Promo Pounce</title>
+  <meta name="description" content="Pounce on promo codes, coupons and sales. Search any item, save the best deals and rank them by category." />
+  <meta name="theme-color" content="#1a1033" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Pounce" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="arcade">
+  <div class="blobs" aria-hidden="true"><i></i><i></i><i></i></div>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" class="brand-icon" width="38" height="38" />
+      <div>
+        <h1>Promo<span>Pounce</span></h1>
+        <p class="tagline" id="tagline">sniffing out savings…</p>
+      </div>
+    </div>
+    <button class="stash-bubble" data-go="stash" aria-label="Open your stash">
+      <span aria-hidden="true">⭐</span><b id="stash-count">0</b>
+    </button>
+  </header>
+
+  <main id="main">
+    <!-- SEARCH -->
+    <section class="view active" id="view-search" aria-labelledby="t-search">
+      <div class="hero">
+        <h2 id="t-search">What are you <em>hunting</em> for?</h2>
+        <p>Search any item or store. We'll dig up promo codes, live deals, and similar steals.</p>
+      </div>
+      <form class="searchbox" id="search-form" role="search">
+        <span class="search-ico" aria-hidden="true">🔍</span>
+        <input id="q" type="search" autocomplete="off" enterkeyhint="search" placeholder="airpods pro" aria-label="Search for an item or store" />
+        <button type="submit" class="btn-pounce">Pounce!</button>
+      </form>
+      <div class="chips" id="recent-chips"></div>
+      <div id="search-status" class="status" role="status" aria-live="polite"></div>
+      <div id="search-results"></div>
+    </section>
+
+    <!-- HOT -->
+    <section class="view" id="view-hot" aria-labelledby="t-hot">
+      <div class="view-head">
+        <div>
+          <h2 id="t-hot">Hot right now 🔥</h2>
+          <p class="sub" id="hot-sub">Fresh deals from around the web</p>
+        </div>
+        <button class="icon-btn" id="hot-refresh" aria-label="Refresh deals">↻</button>
+      </div>
+      <div class="chips scroll" id="hot-cats"></div>
+      <div class="toolbar">
+        <label class="select-wrap">Sort
+          <select id="hot-sort">
+            <option value="score">Biggest discount</option>
+            <option value="new">Newest</option>
+            <option value="code">Has a code first</option>
+          </select>
+        </label>
+      </div>
+      <div id="hot-list" class="cards"></div>
+    </section>
+
+    <!-- STASH -->
+    <section class="view" id="view-stash" aria-labelledby="t-stash">
+      <div class="view-head">
+        <div>
+          <h2 id="t-stash">Your stash 🏆</h2>
+          <p class="sub">Drag ⠿ to rank each category from greatest to least.</p>
+        </div>
+        <button class="icon-btn accent" id="add-item" aria-label="Add a deal yourself">＋</button>
+      </div>
+      <div class="chips scroll" id="stash-cats"></div>
+      <div class="toolbar">
+        <button class="pill-btn" id="auto-rank">✨ Auto-rank by discount</button>
+        <button class="pill-btn ghost" id="toggle-used">Hide used</button>
+      </div>
+      <div id="stash-list"></div>
+    </section>
+
+    <!-- STYLE / SETTINGS -->
+    <section class="view" id="view-style" aria-labelledby="t-style">
+      <div class="view-head">
+        <div>
+          <h2 id="t-style">Make it yours 🎨</h2>
+          <p class="sub">Every change saves instantly.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Theme</h3>
+        <div class="theme-grid" id="theme-grid"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Tweak it</h3>
+        <label class="range">Accent color <output id="o-hue"></output>
+          <input type="range" id="s-hue" min="0" max="360" step="1" />
+        </label>
+        <button class="link-btn" id="reset-hue">Use theme's color</button>
+        <label class="range">Text size <output id="o-font"></output>
+          <input type="range" id="s-font" min="85" max="130" step="5" />
+        </label>
+        <label class="range">Roundness <output id="o-radius"></output>
+          <input type="range" id="s-radius" min="2" max="30" step="1" />
+        </label>
+        <div class="seg-row">
+          <span>Density</span>
+          <div class="seg" id="s-density">
+            <button data-v="cozy">Cozy</button><button data-v="compact">Compact</button>
+          </div>
+        </div>
+        <div class="seg-row">
+          <span>Layout</span>
+          <div class="seg" id="s-layout">
+            <button data-v="list">List</button><button data-v="grid">Grid</button>
+          </div>
+        </div>
+        <label class="switch"><input type="checkbox" id="s-motion" /><span></span> Bouncy animations</label>
+        <label class="switch"><input type="checkbox" id="s-blobs" /><span></span> Floating background blobs</label>
+        <label class="switch"><input type="checkbox" id="s-confetti" /><span></span> Confetti when you copy a code</label>
+        <label class="switch"><input type="checkbox" id="s-haptics" /><span></span> Haptic buzz (Android)</label>
+        <label class="switch"><input type="checkbox" id="s-snippets" /><span></span> Show deal descriptions</label>
+      </div>
+
+      <div class="panel">
+        <h3>Search power</h3>
+        <p class="hint">Works free out of the box (DuckDuckGo + Slickdeals). Add a free key for Google results or higher limits. Keys stay on this device.</p>
+        <label class="field">Web search engine
+          <select id="s-provider">
+            <option value="ddg">DuckDuckGo (free, no key)</option>
+            <option value="serper">Google via Serper.dev (free key)</option>
+          </select>
+        </label>
+        <label class="field">Serper.dev API key
+          <input type="password" id="s-serper" placeholder="optional" autocomplete="off" />
+        </label>
+        <label class="field">Jina AI key (raises free limits)
+          <input type="password" id="s-jina" placeholder="optional" autocomplete="off" />
+        </label>
+        <label class="switch"><input type="checkbox" id="s-slick" /><span></span> Include Slickdeals live deals</label>
+        <label class="switch"><input type="checkbox" id="s-similar" /><span></span> Look for similar items too</label>
+      </div>
+
+      <div class="panel">
+        <h3>Your data</h3>
+        <div class="btn-row">
+          <button class="pill-btn" id="export">⬇ Export stash</button>
+          <label class="pill-btn">⬆ Import<input type="file" id="import" accept="application/json" hidden /></label>
+          <button class="pill-btn danger" id="clear-stash">Clear stash</button>
+        </div>
+        <p class="hint">Promo Pounce finds codes posted publicly online. Codes can expire or have exclusions, so always check the store's terms at checkout.</p>
+      </div>
+      <p class="credits">Made with 🐾 · <a href="https://github.com/chadant1/promo-pounce" target="_blank" rel="noopener">Source on GitHub</a></p>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Main">
+    <button data-go="search" class="active"><span>🔍</span>Search</button>
+    <button data-go="hot"><span>🔥</span>Hot</button>
+    <button data-go="stash"><span>🏆</span>Stash</button>
+    <button data-go="style"><span>🎨</span>Style</button>
+    <i class="tab-ink" aria-hidden="true"></i>
+  </nav>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="edit-dialog">
+    <form method="dialog" id="edit-form">
+      <h3 id="edit-title">Add a deal</h3>
+      <label class="field">Item or deal <input name="title" required placeholder="Nike Pegasus 41 running shoes" /></label>
+      <label class="field">Promo code <input name="code" placeholder="SAVE20" autocapitalize="characters" /></label>
+      <label class="field">Discount <input name="discount" placeholder="20% off, $15 off, or $89 (reg $129)" /></label>
+      <label class="field">Link <input name="url" type="url" placeholder="https://…" /></label>
+      <label class="field">Category <select name="category" id="edit-cat"></select></label>
+      <label class="field">Notes <input name="notes" placeholder="expires Sunday, excludes sale items…" /></label>
+      <div class="btn-row end">
+        <button value="cancel" class="pill-btn ghost" formnovalidate>Cancel</button>
+        <button value="save" class="pill-btn accent">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
