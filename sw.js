@@ -1,5 +1,5 @@
 // Promo Pounce service worker: app shell works offline; deal data is network-first.
-const VERSION = 'pp-v1';
+const VERSION = 'pp-v2';
 const SHELL = [
   './', 'index.html', 'styles.css', 'js/app.js', 'js/deal-utils.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',

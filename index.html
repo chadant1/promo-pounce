@@ -49,6 +49,16 @@
       </form>
       <div class="chips" id="recent-chips"></div>
       <div id="search-status" class="status" role="status" aria-live="polite"></div>
+      <div id="search-tools" class="search-tools" hidden>
+        <div class="chips scroll stores" id="search-stores" aria-label="Filter by store"></div>
+        <label class="select-wrap">Sort
+          <select id="search-sort">
+            <option value="match">Best match</option>
+            <option value="score">Biggest discount</option>
+            <option value="store">Store (A–Z)</option>
+          </select>
+        </label>
+      </div>
       <div id="search-results"></div>
     </section>
 
@@ -62,12 +72,14 @@
         <button class="icon-btn" id="hot-refresh" aria-label="Refresh deals">↻</button>
       </div>
       <div class="chips scroll" id="hot-cats"></div>
+      <div class="chips scroll stores" id="hot-stores" aria-label="Filter by store"></div>
       <div class="toolbar">
         <label class="select-wrap">Sort
           <select id="hot-sort">
             <option value="score">Biggest discount</option>
             <option value="new">Newest</option>
             <option value="code">Has a code first</option>
+            <option value="store">Store (A–Z)</option>
           </select>
         </label>
       </div>
@@ -84,6 +96,7 @@
         <button class="icon-btn accent" id="add-item" aria-label="Add a deal yourself">＋</button>
       </div>
       <div class="chips scroll" id="stash-cats"></div>
+      <div class="chips scroll stores" id="stash-stores" aria-label="Filter by store"></div>
       <div class="toolbar">
         <button class="pill-btn" id="auto-rank">✨ Auto-rank by discount</button>
         <button class="pill-btn ghost" id="toggle-used">Hide used</button>
@@ -134,6 +147,13 @@
         <label class="switch"><input type="checkbox" id="s-confetti" /><span></span> Confetti when you copy a code</label>
         <label class="switch"><input type="checkbox" id="s-haptics" /><span></span> Haptic buzz (Android)</label>
         <label class="switch"><input type="checkbox" id="s-snippets" /><span></span> Show deal descriptions</label>
+      </div>
+
+      <div class="panel">
+        <h3>Filters</h3>
+        <p class="hint">Applies to search results and the Hot list.</p>
+        <label class="switch"><input type="checkbox" id="s-noebay" /><span></span> Hide eBay listings</label>
+        <label class="switch"><input type="checkbox" id="s-norefurb" /><span></span> Hide refurbished, renewed, open-box &amp; pre-owned</label>
       </div>
 
       <div class="panel">

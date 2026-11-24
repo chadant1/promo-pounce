@@ -159,6 +159,18 @@ main { max-width: 860px; margin: 0 auto; padding: 0 var(--pad); }
 .chip .n { opacity: .7; margin-left: 4px; font-size: .78rem; }
 .chip.ghost { background: none; border-style: dashed; }
 
+/* ---------- Store filters ---------- */
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; box-shadow: 0 0 0 2px rgba(255,255,255,.25); }
+.chips.stores { margin-top: 4px; }
+.chips.stores .chip { font-size: .8rem; padding: 6px 11px; }
+.chips.stores:empty { display: none; }
+.search-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 4px; }
+.search-tools .chips { flex: 1 1 100%; margin-bottom: 4px; }
+.tag.store { font-weight: 700; color: var(--text); }
+.store-head { grid-column: 1 / -1; display: flex; align-items: center; font-size: 1.05rem; margin: 10px 0 0; }
+.store-head .dot { width: 12px; height: 12px; }
+.muted-note { color: var(--muted); font-size: .85em; }
+
 /* ---------- Status / sections ---------- */
 .status { margin: 10px 0; color: var(--muted); font-size: .9rem; min-height: 1.2em; }
 .status.err { color: hsl(0 85% 62%); }

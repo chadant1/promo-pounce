@@ -18,6 +18,10 @@ It then launches full-screen from your home screen like any other app, and the a
 | 🏆 **Stash** | Saved deals, **auto-sorted into categories** (Electronics, Fashion, Home, Beauty, Food, Travel, Toys, Sports, Pets, Health, Auto, Media). **Drag ⠿ to rank each category from greatest to least**, or tap ✨ *Auto-rank* to order by discount. Add your own codes with ＋, mark codes used, edit, and move items between categories. |
 | 🎨 **Style** | 6 themes (Neon Arcade, Candy Pop, Sunset, Mint Fresh, Midnight, Paper), accent color wheel, text size, roundness, cozy/compact density, list/grid layout, and toggles for animations, floating blobs, confetti, haptics and descriptions. |
 
+**Shop by store:** every deal is tagged with its retailer (Amazon, Walmart, Target, Best Buy, Costco, Home Depot and 25+ more). Tap a store chip to see only that store, or choose **Sort → Store (A–Z)** in Search and Hot.
+
+**Filters (Style → Filters):** eBay listings and refurbished / renewed / open-box / pre-owned items are hidden by default. Switch either filter off to see them again.
+
 Tap any code to copy it (with confetti 🎉).
 
 ## Search sources
