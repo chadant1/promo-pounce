@@ -934,4 +934,10 @@ if (sp) runSearch(sp);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is optional */ });
+  // When an update installs, reload once so the new version shows right away.
+  let reloaded = false;
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
 }
